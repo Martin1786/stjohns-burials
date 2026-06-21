@@ -280,6 +280,27 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Year range slider */
+  #year-from, #year-to {
+    position: absolute; width: 100%;
+    pointer-events: none;
+    -webkit-appearance: none; appearance: none;
+    height: 4px; background: transparent; outline: none;
+  }
+  #year-from::-webkit-slider-thumb, #year-to::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #8B6914; border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    pointer-events: all; cursor: pointer;
+  }
+  #year-from::-moz-range-thumb, #year-to::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #8B6914; border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    pointer-events: all; cursor: pointer;
+  }
+
   @media (max-width: 600px) {
     html, body {
       height: 100%;
@@ -341,9 +362,18 @@
       <option value="M">Male</option>
       <option value="F">Female</option>
     </select>
-    <select id="filter-decade" onchange="applyFilters()">
-      <option value="">All decades</option>
-    </select>
+    <div id="year-range-wrap" style="display:flex;flex-direction:column;gap:0.2rem;min-width:180px;flex:1;">
+      <div style="display:flex;justify-content:space-between;font-family:'Helvetica Neue',Arial,sans-serif;font-size:0.78rem;color:#7A7268;">
+        <span>Year range</span>
+        <span id="year-range-label" style="color:#2C2A26;font-weight:500;">All years</span>
+      </div>
+      <div style="position:relative;height:28px;">
+        <input type="range" id="year-from" min="1830" max="2025" value="1830" oninput="onYearSlider()" style="position:absolute;width:100%;pointer-events:none;appearance:none;-webkit-appearance:none;height:4px;background:transparent;outline:none;">
+        <input type="range" id="year-to"   min="1830" max="2025" value="2025" oninput="onYearSlider()" style="position:absolute;width:100%;pointer-events:none;appearance:none;-webkit-appearance:none;height:4px;background:transparent;outline:none;">
+        <div id="year-track" style="position:absolute;top:50%;transform:translateY(-50%);width:100%;height:4px;background:#D5CFC4;border-radius:2px;"></div>
+        <div id="year-fill"  style="position:absolute;top:50%;transform:translateY(-50%);height:4px;background:#8B6914;border-radius:2px;left:0%;right:0%;"></div>
+      </div>
+    </div>
     <select id="filter-tab" onchange="applyFilters()">
       <option value="">All registers</option>
       <option value="1830–1885">1830 – 1885</option>
@@ -494,14 +524,17 @@ async function loadData() {
       return ya - yb;
     });
 
-    // Populate decade filter
-    const decades = [...new Set(allRecords.map(r => r.decade).filter(Boolean))].sort();
-    const decSel = document.getElementById('filter-decade');
-    decades.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d; opt.textContent = d;
-      decSel.appendChild(opt);
-    });
+    // Set year slider min/max from actual data
+    const years = allRecords.map(r => parseInt(r.year)).filter(Boolean);
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
+    const fromEl = document.getElementById('year-from');
+    const toEl   = document.getElementById('year-to');
+    fromEl.min = minYear; fromEl.min = minYear;
+    toEl.min   = minYear; toEl.max   = maxYear;
+    fromEl.max = maxYear; fromEl.value = minYear;
+    toEl.value = maxYear;
+    updateYearSliderUI(minYear, maxYear, minYear, maxYear);
 
     const residences = [...new Set(allRecords.map(r => r.residence).filter(Boolean))].sort((a,b) => a.localeCompare(b));
     const resSel = document.getElementById('filter-residence');
@@ -526,10 +559,14 @@ async function loadData() {
 function resetFilters() {
   document.getElementById('search').value = '';
   document.getElementById('filter-gender').value = '';
-  document.getElementById('filter-decade').value = '';
   document.getElementById('filter-tab').value = '';
   document.getElementById('filter-memorial').value = '';
   document.getElementById('filter-residence').value = '';
+  const fromEl = document.getElementById('year-from');
+  const toEl   = document.getElementById('year-to');
+  fromEl.value = fromEl.min;
+  toEl.value   = toEl.max;
+  updateYearSliderUI(+fromEl.min, +toEl.max, +fromEl.min, +toEl.max);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   applyFilters();
 }
@@ -539,10 +576,15 @@ function resetFilters() {
 function applyFilters() {
   const search = document.getElementById('search').value.toLowerCase();
   const gender = document.getElementById('filter-gender').value;
-  const decade    = document.getElementById('filter-decade').value;
   const tab       = document.getElementById('filter-tab').value;
   const mem       = document.getElementById('filter-memorial').value;
   const residence = document.getElementById('filter-residence').value;
+  const fromEl    = document.getElementById('year-from');
+  const toEl      = document.getElementById('year-to');
+  const yearFrom  = +fromEl.value;
+  const yearTo    = +toEl.value;
+  const allFrom   = +fromEl.min;
+  const allTo     = +toEl.max;
 
   filteredRecords = allRecords.filter(r => {
     if (search) {
@@ -550,10 +592,14 @@ function applyFilters() {
       if (!hay.includes(search)) return false;
     }
     if (gender && r.gender !== gender) return false;
-    if (decade && r.decade !== decade) return false;
     if (tab && r.tab !== tab) return false;
     if (mem && memorialState(r.memorial) !== mem) return false;
     if (residence && r.residence !== residence) return false;
+    // Year range filter (only apply if not at full extent)
+    if (yearFrom > allFrom || yearTo < allTo) {
+      const y = parseInt(r.year) || 0;
+      if (y < yearFrom || y > yearTo) return false;
+    }
     return true;
   });
 
@@ -757,6 +803,30 @@ function closeMemorial() {
 
 // Close panel on Escape key
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
+// ──────────────────────────────────────────────────────────────
+
+// ── Year range slider ─────────────────────────────────────────
+function updateYearSliderUI(minYear, maxYear, from, to) {
+  const pct = v => ((v - minYear) / (maxYear - minYear)) * 100;
+  const fill  = document.getElementById('year-fill');
+  const label = document.getElementById('year-range-label');
+  fill.style.left  = pct(from) + '%';
+  fill.style.width = (pct(to) - pct(from)) + '%';
+  label.textContent = (from === minYear && to === maxYear)
+    ? 'All years'
+    : `${from} – ${to}`;
+}
+
+function onYearSlider() {
+  const fromEl = document.getElementById('year-from');
+  const toEl   = document.getElementById('year-to');
+  let from = +fromEl.value;
+  let to   = +toEl.value;
+  // Stop handles crossing
+  if (from > to) { from = to; fromEl.value = from; }
+  updateYearSliderUI(+fromEl.min, +toEl.max, from, to);
+  applyFilters();
+}
 // ──────────────────────────────────────────────────────────────
 
 // Auto-load on page open
