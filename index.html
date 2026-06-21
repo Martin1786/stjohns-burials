@@ -533,10 +533,8 @@ async function loadData() {
     const maxYear = Math.max(...years);
     const fromEl = document.getElementById('year-from');
     const toEl   = document.getElementById('year-to');
-    fromEl.min = minYear; fromEl.min = minYear;
-    toEl.min   = minYear; toEl.max   = maxYear;
-    fromEl.max = maxYear; fromEl.value = minYear;
-    toEl.value = maxYear;
+    fromEl.min = minYear; fromEl.max = maxYear; fromEl.value = minYear;
+    toEl.min   = minYear; toEl.max   = maxYear; toEl.value   = maxYear;
     // Apply URL year params if present
     if (window._urlYearFrom !== null && window._urlYearFrom !== undefined) {
       fromEl.value = Math.max(minYear, Math.min(maxYear, window._urlYearFrom));
@@ -894,4 +892,4 @@ function readFiltersFromURL() {
     window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
   }
 }
-// ───────────────────────────────
+// ────────────────────────────────────────
