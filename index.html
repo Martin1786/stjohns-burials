@@ -403,9 +403,9 @@
 <div class="results">
   <div id="state-area">
     <div class="state-box">
-      <div class="state-icon">📖</div>
-      <h3>Enter your API key above to begin</h3>
-      <p>Records will load from the Google Sheet once your key is entered.</p>
+      <div class="spinner"></div>
+      <h3>Loading burial records…</h3>
+      <p>Fetching all four registers from Google Sheets.</p>
     </div>
   </div>
   <div class="cards-grid" id="cards-grid"></div>
@@ -894,4 +894,4 @@ function readFiltersFromURL() {
     window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
   }
 }
-// ────────────────────
+// ───────────────────────────────
