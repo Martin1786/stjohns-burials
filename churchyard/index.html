@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>St John's Churchyard — Burial Records</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    background: #F5F2ED;
+    color: #2C2A26;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    background: #2C2A26;
+    color: #F5F2ED;
+    padding: 1.5rem 2rem;
+    border-bottom: 3px solid #8B6914;
+  }
+  .header h1 {
+    font-size: 1.4rem;
+    font-weight: normal;
+    letter-spacing: 0.04em;
+  }
+  .header p {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.8rem;
+    color: #B0A898;
+    margin-top: 0.25rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .record-count {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.8rem;
+    color: #8B6914;
+    margin-top: 0.4rem;
+  }
+
+  /* API Key setup */
+  .setup-panel {
+    background: #fff8e7;
+    border: 1px solid #d4a843;
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 2rem;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+  .setup-panel h2 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #7a5c10;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .setup-panel .input-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .setup-panel input {
+    flex: 1;
+    min-width: 240px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #c9a84c;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+    background: white;
+    color: #2C2A26;
+  }
+  .setup-panel button {
+    padding: 0.5rem 1.25rem;
+    background: #2C2A26;
+    color: #F5F2ED;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    white-space: nowrap;
+  }
+  .setup-panel button:hover { background: #444; }
+  .setup-note {
+    font-size: 0.75rem;
+    color: #8a6c20;
+    margin-top: 0.5rem;
+  }
+
+  /* Controls */
+  .controls {
+    padding: 1rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    background: #EDE9E2;
+    border-bottom: 1px solid #D5CFC4;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%;
+    padding: 0.65rem 1rem 0.65rem 2.5rem;
+    border: 1px solid #C5BFB4;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: Georgia, serif;
+    background: white;
+    color: #2C2A26;
+  }
+  .search-wrap input:focus { outline: 2px solid #8B6914; outline-offset: 1px; }
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9A9188;
+    font-size: 1rem;
+  }
+  .filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .filters select {
+    padding: 0.45rem 0.75rem;
+    border: 1px solid #C5BFB4;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: white;
+    color: #2C2A26;
+    cursor: pointer;
+  }
+  .filters select:focus { outline: 2px solid #8B6914; }
+  .result-info {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.8rem;
+    color: #7A7268;
+  }
+
+  /* Results */
+  .results {
+    padding: 1rem 2rem 2rem;
+    max-width: 1100px;
+    flex: 1;
+  }
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  /* Card */
+  .card {
+    background: white;
+    border: 1px solid #D5CFC4;
+    border-radius: 4px;
+    padding: 1rem 1.125rem;
+    border-left: 3px solid #8B6914;
+  }
+  .card-name {
+    font-size: 1.05rem;
+    font-weight: normal;
+    color: #1A1814;
+    margin-bottom: 0.3rem;
+  }
+  .card-meta {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.78rem;
+    color: #7A7268;
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+  }
+  .card-meta span { display: flex; align-items: center; gap: 0.25rem; }
+  .card-residence {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.82rem;
+    color: #5A5650;
+    margin-bottom: 0.4rem;
+    font-style: italic;
+  }
+  .card-badges {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .badge {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .badge-plot { background: #D6EDD6; color: #2A5C2A; }
+  .badge-plot-link { cursor: pointer; }
+  .badge-plot-link:hover { background: #bfdfbf; }
+  .badge-no-memorial { background: #FEF3CC; color: #7A5C10; }
+  .badge-unverified { background: #F0EDEA; color: #8A8278; }
+  .badge-decade { background: #E8EFF8; color: #2A4A7A; }
+  .badge-gender-m { background: #E8F0F8; color: #1A4A7A; }
+  .badge-gender-f { background: #F8EAF0; color: #7A1A4A; }
+  .card-notes {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.78rem;
+    color: #6A6560;
+    margin-top: 0.35rem;
+    line-height: 1.5;
+  }
+  .card-notes.truncated { 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .toggle-notes {
+    background: none;
+    border: none;
+    color: #8B6914;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    margin-top: 0.2rem;
+    display: block;
+  }
+  .card-vicar {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.73rem;
+    color: #9A9188;
+    margin-top: 0.35rem;
+    font-style: italic;
+  }
+
+  /* States */
+  .state-box {
+    text-align: center;
+    padding: 3rem 2rem;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #7A7268;
+  }
+  .state-box .state-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+  .state-box h3 { font-size: 1rem; color: #4A4640; margin-bottom: 0.5rem; }
+  .state-box p { font-size: 0.85rem; line-height: 1.6; }
+  .retry-btn {
+    margin-top: 1rem;
+    padding: 0.5rem 1.25rem;
+    background: #2C2A26;
+    color: #F5F2ED;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+  .retry-btn:hover { background: #444; }
+
+  .spinner {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border: 3px solid #D5CFC4;
+    border-top-color: #8B6914;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+    .header { padding: 0.6rem 1rem; }
+    .header h1 { font-size: 1rem; }
+    .header p { margin-top: 0.1rem; }
+    .record-count { margin-top: 0.2rem; }
+    .controls {
+      padding: 0.5rem 1rem;
+      gap: 0.4rem;
+      position: static;
+      flex-shrink: 0;
+    }
+    .search-wrap input {
+      padding: 0.45rem 1rem 0.45rem 2.2rem;
+      font-size: 0.9rem;
+    }
+    .filters {
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .filters select {
+      flex: 1 1 calc(50% - 0.4rem);
+      min-width: 0;
+      max-width: 100%;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.5rem;
+    }
+    .results {
+      padding: 0.5rem 1rem 2rem;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .setup-panel { margin: 1rem; }
+    .cards-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>St John's Churchyard — Burial Records</h1>
+  <p>Historical register 1830 to present</p>
+  <div class="record-count" id="record-count"></div>
+</div>
+
+<div id="setup-panel" style="display:none"></div>
+
+<div class="controls" id="controls" style="display:none">
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="search" placeholder="Search by name or residence..." oninput="applyFilters()" />
+  </div>
+  <div class="filters">
+    <select id="filter-gender" onchange="applyFilters()">
+      <option value="">All genders</option>
+      <option value="M">Male</option>
+      <option value="F">Female</option>
+    </select>
+    <select id="filter-decade" onchange="applyFilters()">
+      <option value="">All decades</option>
+    </select>
+    <select id="filter-tab" onchange="applyFilters()">
+      <option value="">All registers</option>
+      <option value="1830–1885">1830 – 1885</option>
+      <option value="1885–1931">1885 – 1931</option>
+      <option value="1931–1954">1931 – 1954</option>
+      <option value="1954–present">1954 – present</option>
+    </select>
+    <select id="filter-memorial" onchange="applyFilters()">
+      <option value="">All memorial states</option>
+      <option value="plot">Has plot number</option>
+      <option value="none">No memorial (A)</option>
+      <option value="unverified">Not yet verified</option>
+    </select>
+    <select id="filter-residence" onchange="applyFilters()">
+      <option value="">All residences</option>
+    </select>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+    <div class="result-info" id="result-info"></div>
+    <button onclick="resetFilters()" id="reset-btn" style="padding:0.4rem 1rem;font-size:0.82rem;font-family:'Helvetica Neue',Arial,sans-serif;background:#8B6914;border:none;border-radius:4px;color:#fff;cursor:pointer;font-weight:600;letter-spacing:0.02em;" onmouseover="this.style.background='#6e5210'" onmouseout="this.style.background='#8B6914'">✕ Reset filters</button>
+  </div>
+</div>
+
+<div class="results">
+  <div id="state-area">
+    <div class="state-box">
+      <div class="state-icon">📖</div>
+      <h3>Enter your API key above to begin</h3>
+      <p>Records will load from the Google Sheet once your key is entered.</p>
+    </div>
+  </div>
+  <div class="cards-grid" id="cards-grid"></div>
+</div>
+
+<!-- Memorial slide-in panel -->
+<div id="memorial-overlay" onclick="closeMemorial()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;"></div>
+<div id="memorial-panel" style="display:none;position:fixed;top:0;right:0;height:100%;width:360px;max-width:95vw;background:#F5F2ED;z-index:201;box-shadow:-4px 0 20px rgba(0,0,0,0.2);overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="background:#2C2A26;color:#F5F2ED;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #8B6914;">
+    <span style="font-family:Georgia,serif;font-size:1rem;letter-spacing:0.03em;">Memorial Record</span>
+    <button onclick="closeMemorial()" style="background:none;border:none;color:#F5F2ED;font-size:1.4rem;cursor:pointer;line-height:1;padding:0;">×</button>
+  </div>
+  <div id="memorial-content" style="padding:1.25rem;">
+    <div style="text-align:center;padding:2rem;color:#9A9188;">Loading…</div>
+  </div>
+</div>
+
+<script>
+const SHEET_ID = '1RDaAcpxauOaK7v3ezPlKnGy0Kio_sSZTiDb9vNaJD8w';
+const TABS = [
+  { label: '1830–1885',    gid: '284192954'  },
+  { label: '1885–1931',    gid: '91729561'   },
+  { label: '1931–1954',    gid: '1639254629' },
+  { label: '1954–present', gid: '486818710'  }
+];
+
+// ── Memorial sheet ───────────────────────────────────────────
+const MEMORIAL_SHEET_ID = '1WsZHOjtS3w_JLOJSj-ynm1MrfB6t5JNQb0Qw0P6M9OU';
+let memorialData = [];   // array of all memorial records
+// ──────────────────────────────────────────────────────────────
+
+// ── Display switches ──────────────────────────────────────────
+const SHOW_NOTES = true;   // set to false to hide the notes section on cards
+// ──────────────────────────────────────────────────────────────
+
+let allRecords = [];
+let filteredRecords = [];
+
+function clean(val) {
+  let s = (val || '').toString().trim();
+  // gviz sometimes wraps values in extra quotes — strip them
+  if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1).trim();
+  return s;
+}
+
+function memorialState(val) {
+  const v = clean(val);
+  if (!v) return 'unverified';
+  if (v.toUpperCase() === 'A') return 'none';
+  return 'plot';
+}
+
+async function loadData() {
+
+
+  showLoading();
+
+  try {
+    const fetches = TABS.map(tab =>
+      fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`)
+        .then(r => r.text())
+        .then(text => {
+          const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+          const cols = json.table.cols.map(c => c.label);
+          const rows = json.table.rows.map(row =>
+            row ? row.c.map(cell => {
+              if (!cell || cell.v === null || cell.v === undefined) return '';
+              // gviz sometimes returns booleans for single-letter values like "A" —
+              // use the formatted value (cell.f) instead which holds the original text
+              if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
+              // gviz returns dates as "Date(yyyy,m,d)" where month is 0-indexed - fix it
+              if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+                const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
+                const d = parts[2].toString().padStart(2,'0');
+                const m = (parts[1]+1).toString().padStart(2,'0');
+                const y = parts[0];
+                return d + '/' + m + '/' + y;
+              }
+              return String(cell.v).trim();
+            }) : []
+          );
+          return { tab: tab.label, data: { values: [cols, ...rows] } };
+        })
+    );
+
+    const results = await Promise.all(fetches);
+    allRecords = [];
+
+    for (const { tab, data } of results) {
+      if (data.error) throw new Error(data.error.message);
+      const rows = data.values || [];
+      // skip header row (index 0)
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || r.length < 2) continue;
+        allRecords.push({
+          tab,
+          id:        clean(r[0]),
+          no:        clean(r[1]),
+          year:      clean(r[2]),
+          gender:    clean(r[3]),
+          date:      clean(r[4]),
+          surname:   clean(r[5]),
+          forename:  clean(r[6]),
+          age:       clean(r[7]),
+          decade:    clean(r[8]),
+          residence: clean(r[9]),
+          notes:     clean(r[10]),
+          memorial:  clean(r[11]),
+          byWhom:    clean(r[12]),
+        });
+      }
+    }
+
+    // Sort by year then date
+    allRecords.sort((a, b) => {
+      const ya = parseInt(a.year) || 0;
+      const yb = parseInt(b.year) || 0;
+      return ya - yb;
+    });
+
+    // Populate decade filter
+    const decades = [...new Set(allRecords.map(r => r.decade).filter(Boolean))].sort();
+    const decSel = document.getElementById('filter-decade');
+    decades.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      decSel.appendChild(opt);
+    });
+
+    const residences = [...new Set(allRecords.map(r => r.residence).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+    const resSel = document.getElementById('filter-residence');
+    residences.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r; opt.textContent = r;
+      resSel.appendChild(opt);
+    });
+
+    document.getElementById('record-count').textContent = `${allRecords.length.toLocaleString()} records loaded`;
+    document.getElementById('setup-panel').style.display = 'none';
+    document.getElementById('controls').style.display = 'flex';
+    document.getElementById('state-area').style.display = 'none';
+
+    applyFilters();
+
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function resetFilters() {
+  document.getElementById('search').value = '';
+  document.getElementById('filter-gender').value = '';
+  document.getElementById('filter-decade').value = '';
+  document.getElementById('filter-tab').value = '';
+  document.getElementById('filter-memorial').value = '';
+  document.getElementById('filter-residence').value = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  applyFilters();
+}
+
+
+
+function applyFilters() {
+  const search = document.getElementById('search').value.toLowerCase();
+  const gender = document.getElementById('filter-gender').value;
+  const decade    = document.getElementById('filter-decade').value;
+  const tab       = document.getElementById('filter-tab').value;
+  const mem       = document.getElementById('filter-memorial').value;
+  const residence = document.getElementById('filter-residence').value;
+
+  filteredRecords = allRecords.filter(r => {
+    if (search) {
+      const hay = `${r.surname} ${r.forename} ${r.residence}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    if (gender && r.gender !== gender) return false;
+    if (decade && r.decade !== decade) return false;
+    if (tab && r.tab !== tab) return false;
+    if (mem && memorialState(r.memorial) !== mem) return false;
+    if (residence && r.residence !== residence) return false;
+    return true;
+  });
+
+  document.getElementById('result-info').textContent =
+    `Showing ${filteredRecords.length.toLocaleString()} of ${allRecords.length.toLocaleString()} records`;
+
+
+
+  renderCards();
+}
+
+function renderCards() {
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+
+  if (filteredRecords.length === 0) {
+    grid.innerHTML = `<div class="state-box" style="grid-column:1/-1">
+      <div class="state-icon">🔍</div>
+      <h3>No records found</h3>
+      <p>Try adjusting your search or filters.</p>
+    </div>`;
+    return;
+  }
+
+  filteredRecords.forEach((r, idx) => {
+    const state = memorialState(r.memorial);
+    let memBadge = '';
+    if (state === 'plot') {
+      memBadge = `<span class="badge badge-plot badge-plot-link" onclick="showMemorial('${r.memorial}','${r.surname.replace(/'/g,"\\'").toUpperCase()}','${r.forename.replace(/'/g,"\\'").toUpperCase()}')" title="Click to view memorial details">Plot ${r.memorial}</span>`;
+    } else if (state === 'none') {
+      memBadge = `<span class="badge badge-no-memorial">No memorial record</span>`;
+    } else {
+      memBadge = `<span class="badge badge-unverified">Not yet verified</span>`;
+    }
+
+    const genderBadge = r.gender
+      ? `<span class="badge ${r.gender === 'M' ? 'badge-gender-m' : 'badge-gender-f'}">${r.gender === 'M' ? 'Male' : 'Female'}</span>`
+      : '';
+    const decadeBadge = r.decade
+      ? `<span class="badge badge-decade">${r.decade}</span>` : '';
+
+    const notesId = `notes-${idx}`;
+    const hasLongNotes = r.notes && r.notes.length > 60;
+    const notesHtml = SHOW_NOTES && r.notes ? `
+      <div class="card-notes truncated" id="${notesId}">${escHtml(r.notes)}</div>
+      ${hasLongNotes ? `<button class="toggle-notes" onclick="toggleNotes('${notesId}', this)">Show more</button>` : ''}
+    ` : '';
+
+    const vicHtml = r.byWhom
+      ? `<div class="card-vicar">Officiated by ${escHtml(r.byWhom)}</div>` : '';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-name">${escHtml(r.forename)} ${escHtml(r.surname)}</div>
+      <div class="card-meta">
+        ${r.date ? `<span>📅 ${escHtml(r.date)}</span>` : ''}
+        ${r.age  ? `<span>Age ${escHtml(r.age)}</span>` : ''}
+      </div>
+      ${r.residence ? `<div class="card-residence">${escHtml(r.residence)}</div>` : ''}
+      <div class="card-badges">${memBadge}${genderBadge}${decadeBadge}</div>
+      ${notesHtml}
+      ${vicHtml}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function toggleNotes(id, btn) {
+  const el = document.getElementById(id);
+  if (el.classList.contains('truncated')) {
+    el.classList.remove('truncated');
+    btn.textContent = 'Show less';
+  } else {
+    el.classList.add('truncated');
+    btn.textContent = 'Show more';
+  }
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showLoading() {
+  document.getElementById('state-area').style.display = 'block';
+  document.getElementById('state-area').innerHTML = `
+    <div class="state-box">
+      <div class="spinner"></div>
+      <h3>Loading burial records…</h3>
+      <p>Fetching all four registers from Google Sheets.</p>
+    </div>`;
+  document.getElementById('cards-grid').innerHTML = '';
+}
+
+function showError(msg) {
+  document.getElementById('state-area').style.display = 'block';
+  document.getElementById('state-area').innerHTML = `
+    <div class="state-box">
+      <div class="state-icon">⚠️</div>
+      <h3>Could not load records</h3>
+      <p>Please check your API key and try again.<br><small style="color:#999">${escHtml(msg)}</small></p>
+      <button class="retry-btn" onclick="location.reload()">Retry</button>
+    </div>`;
+}
+
+// ── Memorial panel ────────────────────────────────────────────
+async function loadMemorialData() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${MEMORIAL_SHEET_ID}/gviz/tq?tqx=out:json`;
+    const text = await fetch(url).then(r => r.text());
+    const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+    const rows = json.table.rows;
+    // Columns: 0=ID, 1=Row, 2=Abbreviation, 3=Date of Death, 4=Surname, 5=Forename,
+    //          6=Burial/Notes, 7=Old Plot, 8=New Plot, 9=XY, 10=Link, 11=Section, 12=Notes ...
+    rows.forEach(row => {
+      if (!row) return;
+      const c = row.c.map(cell => {
+        if (!cell || cell.v === null || cell.v === undefined) return '';
+        if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
+        if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+          const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
+          return parts[2].toString().padStart(2,'0') + '/' + (parts[1]+1).toString().padStart(2,'0') + '/' + parts[0];
+        }
+        let s = String(cell.v).trim();
+        if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1,-1).trim();
+        return s;
+      });
+      const plotNo = c[8]; // New Plot
+      if (plotNo) memorialData.push({
+        plot:    plotNo,
+        death:   c[3],
+        surname: c[4].toUpperCase(),
+        forename:c[5].toUpperCase(),
+        burial:  c[6],
+        link:    c[10],
+      });
+    });
+  } catch(e) {
+    console.warn('Could not load memorial data:', e);
+  }
+}
+
+function driveThumb(url) {
+  // Convert Google Drive share/view link to a displayable thumbnail URL
+  if (!url) return '';
+  const m = url.match(/\/file\/d\/([^\/]+)/);
+  if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w600`;
+  return url; // return as-is if not a Drive link
+}
+
+function showMemorial(plotNo, surname, forename) {
+  const panel   = document.getElementById('memorial-panel');
+  const overlay = document.getElementById('memorial-overlay');
+  const content = document.getElementById('memorial-content');
+
+  overlay.style.display = 'block';
+  panel.style.display   = 'block';
+  // Trigger transition on next frame
+  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
+
+  // Match on plot + surname + forename; fall back to plot + surname, then plot alone
+  let m = memorialData.find(r => r.plot === plotNo && r.surname === surname && r.forename === forename);
+  if (!m) m = memorialData.find(r => r.plot === plotNo && r.surname === surname);
+  if (!m) m = memorialData.find(r => r.plot === plotNo);
+  if (!m) {
+    content.innerHTML = `<div style="text-align:center;padding:2rem;color:#9A9188;">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">🪨</div>
+      <p>No memorial record found for Plot ${escHtml(plotNo)}.</p>
+    </div>`;
+    return;
+  }
+
+  const imgHtml = '';
+
+  content.innerHTML = `
+    ${imgHtml}
+    <div style="font-family:Georgia,serif;font-size:1.15rem;color:#1A1814;margin-bottom:0.75rem;">
+      ${escHtml(m.forename)} ${escHtml(m.surname)}
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+      <tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Plot</td>
+          <td style="color:#2C2A26;font-weight:500;">${escHtml(m.plot)}</td></tr>
+      ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
+          <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
+      ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
+          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
+    </table>
+
+  `;
+}
+
+function closeMemorial() {
+  const panel   = document.getElementById('memorial-panel');
+  const overlay = document.getElementById('memorial-overlay');
+  panel.style.transform = 'translateX(100%)';
+  setTimeout(() => {
+    panel.style.display   = 'none';
+    overlay.style.display = 'none';
+  }, 300);
+}
+
+// Close panel on Escape key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
+// ──────────────────────────────────────────────────────────────
+
+// Auto-load on page open
+window.addEventListener('load', () => { loadData(); loadMemorialData(); });
+</script>
+
+</body>
+</html>
