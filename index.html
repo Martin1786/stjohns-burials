@@ -374,12 +374,8 @@
         <div id="year-fill"  style="position:absolute;top:50%;transform:translateY(-50%);height:4px;background:#8B6914;border-radius:2px;left:0%;right:0%;"></div>
       </div>
     </div>
-    <select id="filter-tab" onchange="applyFilters()">
-      <option value="">All registers</option>
-      <option value="1830–1885">1830 – 1885</option>
-      <option value="1885–1931">1885 – 1931</option>
-      <option value="1931–1954">1931 – 1954</option>
-      <option value="1954–present">1954 – present</option>
+    <select id="filter-decade" onchange="applyFilters()">
+      <option value="">All age groups</option>
     </select>
     <select id="filter-memorial" onchange="applyFilters()">
       <option value="">All memorial states</option>
@@ -542,6 +538,15 @@ async function loadData() {
     }
     updateYearSliderUI(minYear, maxYear, +fromEl.value, +toEl.value);
 
+    // Populate age decade filter
+    const decades = [...new Set(allRecords.map(r => r.decade).filter(Boolean))].sort();
+    const decSel = document.getElementById('filter-decade');
+    decades.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      decSel.appendChild(opt);
+    });
+
     const residences = [...new Set(allRecords.map(r => r.residence).filter(Boolean))].sort((a,b) => a.localeCompare(b));
     const resSel = document.getElementById('filter-residence');
     residences.forEach(r => {
@@ -565,7 +570,7 @@ async function loadData() {
 function resetFilters() {
   document.getElementById('search').value = '';
   document.getElementById('filter-gender').value = '';
-  document.getElementById('filter-tab').value = '';
+  document.getElementById('filter-decade').value = '';
   document.getElementById('filter-memorial').value = '';
   document.getElementById('filter-residence').value = '';
   const fromEl = document.getElementById('year-from');
@@ -582,7 +587,7 @@ function resetFilters() {
 function applyFilters() {
   const search = document.getElementById('search').value.toLowerCase();
   const gender = document.getElementById('filter-gender').value;
-  const tab       = document.getElementById('filter-tab').value;
+  const decade    = document.getElementById('filter-decade').value;
   const mem       = document.getElementById('filter-memorial').value;
   const residence = document.getElementById('filter-residence').value;
   const fromEl    = document.getElementById('year-from');
@@ -598,7 +603,7 @@ function applyFilters() {
       if (!hay.includes(search)) return false;
     }
     if (gender && r.gender !== gender) return false;
-    if (tab && r.tab !== tab) return false;
+    if (decade && r.decade !== decade) return false;
     if (mem && memorialState(r.memorial) !== mem) return false;
     if (residence && r.residence !== residence) return false;
     // Year range filter (only apply if not at full extent)
@@ -843,7 +848,7 @@ function shareFilters() {
   const params = new URLSearchParams();
   const search   = document.getElementById('search').value;
   const gender   = document.getElementById('filter-gender').value;
-  const tab      = document.getElementById('filter-tab').value;
+  const decade   = document.getElementById('filter-decade').value;
   const mem      = document.getElementById('filter-memorial').value;
   const residence= document.getElementById('filter-residence').value;
   const fromEl   = document.getElementById('year-from');
@@ -853,7 +858,7 @@ function shareFilters() {
 
   if (search)    params.set('search', search);
   if (gender)    params.set('gender', gender);
-  if (tab)       params.set('tab', tab);
+  if (decade)    params.set('decade', decade);
   if (mem)       params.set('mem', mem);
   if (residence) params.set('residence', residence);
   if (yearFrom > +fromEl.min) params.set('from', yearFrom);
@@ -881,7 +886,7 @@ function readFiltersFromURL() {
   const params = new URLSearchParams(window.location.search);
   if (params.has('search'))    document.getElementById('search').value = params.get('search');
   if (params.has('gender'))    document.getElementById('filter-gender').value = params.get('gender');
-  if (params.has('tab'))       document.getElementById('filter-tab').value = params.get('tab');
+  if (params.has('decade'))    document.getElementById('filter-decade').value = params.get('decade');
   if (params.has('mem'))       document.getElementById('filter-memorial').value = params.get('mem');
   if (params.has('residence')) document.getElementById('filter-residence').value = params.get('residence');
   // Year range — applied after sliders are initialised in loadData()
@@ -892,13 +897,4 @@ function readFiltersFromURL() {
 }
 // ──────────────────────────────────────────────────────────────
 
-// Auto-load on page open
-window.addEventListener('load', () => {
-  readFiltersFromURL();
-  loadData();
-  loadMemorialData();
-});
-</script>
-
-</body>
-</html>
+// Auto-load 
