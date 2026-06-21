@@ -664,7 +664,10 @@ function renderCards() {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <div class="card-name">${escHtml(r.forename)} ${escHtml(r.surname)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;">
+        <div class="card-name">${escHtml(r.forename)} ${escHtml(r.surname)}</div>
+        ${r.no ? `<div style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:0.72rem;color:#9A9188;white-space:nowrap;flex-shrink:0;">#${escHtml(r.no)}</div>` : ''}
+      </div>
       <div class="card-meta">
         ${r.date ? `<span>📅 ${escHtml(r.date)}</span>` : ''}
         ${r.age  ? `<span>Age ${escHtml(r.age)}</span>` : ''}
@@ -891,15 +894,4 @@ function readFiltersFromURL() {
     window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
   }
 }
-// ──────────────────────────────────────────────────────────────
-
-// Auto-load on page open
-window.addEventListener('load', () => {
-  readFiltersFromURL();
-  loadData();
-  loadMemorialData();
-});
-</script>
-
-</body>
-</html>
+// ────────────────────
