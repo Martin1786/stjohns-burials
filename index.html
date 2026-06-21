@@ -897,4 +897,13 @@ function readFiltersFromURL() {
 }
 // ──────────────────────────────────────────────────────────────
 
-// Auto-load 
+// Auto-load on page open
+window.addEventListener('load', () => {
+  readFiltersFromURL();
+  loadData();
+  loadMemorialData();
+});
+</script>
+
+</body>
+</html>
