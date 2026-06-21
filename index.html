@@ -459,8 +459,7 @@ function memorialState(val) {
 }
 
 async function loadData() {
-
-
+  console.log('loadData started');
   showLoading();
 
   try {
@@ -552,6 +551,7 @@ async function loadData() {
       resSel.appendChild(opt);
     });
 
+    console.log('Records loaded:', allRecords.length);
     document.getElementById('record-count').textContent = `${allRecords.length.toLocaleString()} records loaded`;
     document.getElementById('setup-panel').style.display = 'none';
     document.getElementById('controls').style.display = 'flex';
@@ -560,6 +560,7 @@ async function loadData() {
     applyFilters();
 
   } catch (err) {
+    console.error('loadData error:', err);
     showError(err.message);
   }
 }
@@ -892,4 +893,15 @@ function readFiltersFromURL() {
     window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
   }
 }
-// ────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+
+// Auto-load on page open
+window.addEventListener('load', () => {
+  readFiltersFromURL();
+  loadData();
+  loadMemorialData();
+});
+</script>
+
+</body>
+</html>
