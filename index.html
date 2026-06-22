@@ -584,40 +584,38 @@ async function fetchBurialsFromSheets() {
 }
 
 async function loadData(forceRefresh = false) {
-  showLoading();
+  showLoading('Checking local cache…');
 
   try {
     let results;
-    let fromCache = false;
 
     // Try cache first (unless forced refresh)
     if (!forceRefresh) {
       try {
         const cached = await loadFromCache('burials');
-        if (cached && isFresh(cached.savedAt)) {
-          results   = cached.data;
-          fromCache = true;
+        if (cached && cached.data && isFresh(cached.savedAt)) {
+          results = cached.data;
           setSyncStatus(`Loaded from device · synced ${formatSyncTime(cached.savedAt)}`);
           showRefreshBtn(true);
         }
       } catch(e) {
-        console.warn('Cache read failed, fetching from Sheets:', e);
+        console.warn('Cache read failed, will fetch from Sheets:', e);
       }
     }
 
     // Fetch from Google Sheets if no usable cache
     if (!results) {
+      showLoading('Fetching from Google Sheets…');
       setSyncStatus('Fetching from Google Sheets…');
       results = await fetchBurialsFromSheets();
-      try {
-        await saveToCache('burials', results);
-        setSyncStatus(`Synced from Google Sheets · ${formatSyncTime(Date.now())}`);
-      } catch(e) {
-        console.warn('Cache write failed:', e);
-        setSyncStatus('Loaded from Google Sheets (cache unavailable)');
-      }
+      // Save to cache in the background — don't let a cache failure block the app
+      saveToCache('burials', results)
+        .then(() => setSyncStatus(`Synced from Google Sheets · ${formatSyncTime(Date.now())}`))
+        .catch(e => { console.warn('Cache write failed:', e); setSyncStatus('Loaded from Google Sheets'); });
       showRefreshBtn(true);
     }
+
+    if (!results || !results.length) throw new Error('No data returned from source.');
 
     allRecords = [];
 
@@ -830,13 +828,13 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function showLoading() {
+function showLoading(msg) {
   document.getElementById('state-area').style.display = 'block';
   document.getElementById('state-area').innerHTML = `
     <div class="state-box">
       <div class="spinner"></div>
       <h3>Loading burial records…</h3>
-      <p>Please wait a moment.</p>
+      <p>${msg || 'Please wait a moment.'}</p>
     </div>`;
   document.getElementById('cards-grid').innerHTML = '';
 }
@@ -847,7 +845,7 @@ function showError(msg) {
     <div class="state-box">
       <div class="state-icon">⚠️</div>
       <h3>Could not load records</h3>
-      <p>Please check your API key and try again.<br><small style="color:#999">${escHtml(msg)}</small></p>
+      <p>There was a problem fetching the data. Check your connection and try again.<br><small style="color:#999">${escHtml(msg)}</small></p>
       <button class="retry-btn" onclick="location.reload()">Retry</button>
     </div>`;
 }
@@ -950,4 +948,111 @@ function showMemorial(plotNo, surname, forename) {
       ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
           <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
       ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
-          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` 
+          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
+    </table>
+
+  `;
+}
+
+function closeMemorial() {
+  const panel   = document.getElementById('memorial-panel');
+  const overlay = document.getElementById('memorial-overlay');
+  panel.style.transform = 'translateX(100%)';
+  setTimeout(() => {
+    panel.style.display   = 'none';
+    overlay.style.display = 'none';
+  }, 300);
+}
+
+// Close panel on Escape key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
+// ──────────────────────────────────────────────────────────────
+
+// ── Year range slider ─────────────────────────────────────────
+function updateYearSliderUI(minYear, maxYear, from, to) {
+  const pct = v => ((v - minYear) / (maxYear - minYear)) * 100;
+  const fill  = document.getElementById('year-fill');
+  const label = document.getElementById('year-range-label');
+  fill.style.left  = pct(from) + '%';
+  fill.style.width = (pct(to) - pct(from)) + '%';
+  label.textContent = (from === minYear && to === maxYear)
+    ? 'All years'
+    : `${from} – ${to}`;
+}
+
+function onYearSlider() {
+  const fromEl = document.getElementById('year-from');
+  const toEl   = document.getElementById('year-to');
+  let from = +fromEl.value;
+  let to   = +toEl.value;
+  // Stop handles crossing
+  if (from > to) { from = to; fromEl.value = from; }
+  updateYearSliderUI(+fromEl.min, +toEl.max, from, to);
+  applyFilters();
+}
+// ──────────────────────────────────────────────────────────────
+
+// ── Share filtered view ───────────────────────────────────────
+function shareFilters() {
+  const params = new URLSearchParams();
+  const search   = document.getElementById('search').value;
+  const gender   = document.getElementById('filter-gender').value;
+  const decade   = document.getElementById('filter-decade').value;
+  const mem      = document.getElementById('filter-memorial').value;
+  const residence= document.getElementById('filter-residence').value;
+  const fromEl   = document.getElementById('year-from');
+  const toEl     = document.getElementById('year-to');
+  const yearFrom = +fromEl.value;
+  const yearTo   = +toEl.value;
+
+  if (search)    params.set('search', search);
+  if (gender)    params.set('gender', gender);
+  if (decade)    params.set('decade', decade);
+  if (mem)       params.set('mem', mem);
+  if (residence) params.set('residence', residence);
+  if (yearFrom > +fromEl.min) params.set('from', yearFrom);
+  if (yearTo   < +toEl.max)   params.set('to',   yearTo);
+
+  const url = window.location.origin + window.location.pathname +
+    (params.toString() ? '?' + params.toString() : '');
+
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('share-btn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#2A5C2A';
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.style.background = '#2C2A26';
+    }, 2000);
+  }).catch(() => {
+    // Fallback: prompt with the URL if clipboard fails
+    prompt('Copy this link:', url);
+  });
+}
+
+function readFiltersFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('search'))    document.getElementById('search').value = params.get('search');
+  if (params.has('gender'))    document.getElementById('filter-gender').value = params.get('gender');
+  if (params.has('decade'))    document.getElementById('filter-decade').value = params.get('decade');
+  if (params.has('mem'))       document.getElementById('filter-memorial').value = params.get('mem');
+  if (params.has('residence')) document.getElementById('filter-residence').value = params.get('residence');
+  // Year range — applied after sliders are initialised in loadData()
+  if (params.has('from') || params.has('to')) {
+    window._urlYearFrom = params.has('from') ? +params.get('from') : null;
+    window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
+  }
+}
+// ──────────────────────────────────────────────────────────────
+
+// Auto-load on page open
+window.addEventListener('load', () => {
+  readFiltersFromURL();
+  loadData();
+  loadMemorialData();
+});
+</script>
+
+</body>
+</html>
