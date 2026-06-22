@@ -42,6 +42,30 @@
     color: #8B6914;
     margin-top: 0.4rem;
   }
+  .sync-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .sync-status {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.73rem;
+    color: #B0A898;
+  }
+  .refresh-btn {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.72rem;
+    padding: 2px 9px;
+    background: transparent;
+    border: 1px solid #5A5040;
+    border-radius: 3px;
+    color: #B0A898;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .refresh-btn:hover { background: #3A3830; color: #F5F2ED; }
 
   /* API Key setup */
   .setup-panel {
@@ -349,6 +373,10 @@
   <h1>St John's Churchyard — Burial Records</h1>
   <p>Historical register 1830 to present</p>
   <div class="record-count" id="record-count"></div>
+  <div class="sync-row">
+    <span class="sync-status" id="sync-status"></span>
+    <button class="refresh-btn" id="refresh-btn" onclick="forceRefresh()" style="display:none">↻ Refresh data</button>
+  </div>
 </div>
 
 <div id="setup-panel" style="display:none"></div>
@@ -439,6 +467,78 @@ let memorialData = [];   // array of all memorial records
 const SHOW_NOTES = true;   // set to false to hide the notes section on cards
 // ──────────────────────────────────────────────────────────────
 
+// ── IndexedDB cache ───────────────────────────────────────────
+const DB_NAME     = 'StJohnsBurialsDB';
+const DB_VERSION  = 1;
+const CACHE_HOURS = 24;   // hours before treating cached data as stale
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('cache')) {
+        db.createObjectStore('cache', { keyPath: 'key' });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function saveToCache(key, data) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx    = db.transaction('cache', 'readwrite');
+    const store = tx.objectStore('cache');
+    store.put({ key, data, savedAt: Date.now() });
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function loadFromCache(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx    = db.transaction('cache', 'readonly');
+    const store = tx.objectStore('cache');
+    const req   = store.get(key);
+    req.onsuccess = e => resolve(e.target.result || null);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function isFresh(savedAt) {
+  return (Date.now() - savedAt) < CACHE_HOURS * 60 * 60 * 1000;
+}
+
+function formatSyncTime(ts) {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `${date} at ${time}`;
+}
+
+function setSyncStatus(text) {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = text;
+}
+
+function showRefreshBtn(visible) {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.style.display = visible ? 'inline-block' : 'none';
+}
+
+async function forceRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.textContent = '↻ Refreshing…'; btn.disabled = true; }
+  allRecords   = [];
+  memorialData = [];
+  await Promise.all([ loadData(true), loadMemorialData(true) ]);
+  if (btn) { btn.textContent = '↻ Refresh data'; btn.disabled = false; }
+}
+// ──────────────────────────────────────────────────────────────
+
 let allRecords = [];
 let filteredRecords = [];
 
@@ -456,38 +556,69 @@ function memorialState(val) {
   return 'plot';
 }
 
-async function loadData() {
+async function fetchBurialsFromSheets() {
+  const fetches = TABS.map(tab =>
+    fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`)
+      .then(r => r.text())
+      .then(text => {
+        const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+        const cols = json.table.cols.map(c => c.label);
+        const rows = json.table.rows.map(row =>
+          row ? row.c.map(cell => {
+            if (!cell || cell.v === null || cell.v === undefined) return '';
+            if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
+            if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+              const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
+              const d = parts[2].toString().padStart(2,'0');
+              const m = (parts[1]+1).toString().padStart(2,'0');
+              const y = parts[0];
+              return d + '/' + m + '/' + y;
+            }
+            return String(cell.v).trim();
+          }) : []
+        );
+        return { tab: tab.label, data: { values: [cols, ...rows] } };
+      })
+  );
+  return Promise.all(fetches);
+}
+
+async function loadData(forceRefresh = false) {
   showLoading();
 
   try {
-    const fetches = TABS.map(tab =>
-      fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`)
-        .then(r => r.text())
-        .then(text => {
-          const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
-          const cols = json.table.cols.map(c => c.label);
-          const rows = json.table.rows.map(row =>
-            row ? row.c.map(cell => {
-              if (!cell || cell.v === null || cell.v === undefined) return '';
-              // gviz sometimes returns booleans for single-letter values like "A" —
-              // use the formatted value (cell.f) instead which holds the original text
-              if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
-              // gviz returns dates as "Date(yyyy,m,d)" where month is 0-indexed - fix it
-              if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-                const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
-                const d = parts[2].toString().padStart(2,'0');
-                const m = (parts[1]+1).toString().padStart(2,'0');
-                const y = parts[0];
-                return d + '/' + m + '/' + y;
-              }
-              return String(cell.v).trim();
-            }) : []
-          );
-          return { tab: tab.label, data: { values: [cols, ...rows] } };
-        })
-    );
+    let results;
+    let fromCache = false;
 
-    const results = await Promise.all(fetches);
+    // Try cache first (unless forced refresh)
+    if (!forceRefresh) {
+      try {
+        const cached = await loadFromCache('burials');
+        if (cached && isFresh(cached.savedAt)) {
+          results   = cached.data;
+          fromCache = true;
+          setSyncStatus(`Loaded from device · synced ${formatSyncTime(cached.savedAt)}`);
+          showRefreshBtn(true);
+        }
+      } catch(e) {
+        console.warn('Cache read failed, fetching from Sheets:', e);
+      }
+    }
+
+    // Fetch from Google Sheets if no usable cache
+    if (!results) {
+      setSyncStatus('Fetching from Google Sheets…');
+      results = await fetchBurialsFromSheets();
+      try {
+        await saveToCache('burials', results);
+        setSyncStatus(`Synced from Google Sheets · ${formatSyncTime(Date.now())}`);
+      } catch(e) {
+        console.warn('Cache write failed:', e);
+        setSyncStatus('Loaded from Google Sheets (cache unavailable)');
+      }
+      showRefreshBtn(true);
+    }
+
     allRecords = [];
 
     for (const { tab, data } of results) {
@@ -705,7 +836,7 @@ function showLoading() {
     <div class="state-box">
       <div class="spinner"></div>
       <h3>Loading burial records…</h3>
-      <p>Fetching all four registers from Google Sheets.</p>
+      <p>Please wait a moment.</p>
     </div>`;
   document.getElementById('cards-grid').innerHTML = '';
 }
@@ -722,9 +853,23 @@ function showError(msg) {
 }
 
 // ── Memorial panel ────────────────────────────────────────────
-async function loadMemorialData() {
+async function loadMemorialData(forceRefresh = false) {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${MEMORIAL_SHEET_ID}/gviz/tq?tqx=out:json`;
+    // Try cache first
+    if (!forceRefresh) {
+      try {
+        const cached = await loadFromCache('memorials');
+        if (cached && isFresh(cached.savedAt)) {
+          memorialData = cached.data;
+          return;
+        }
+      } catch(e) {
+        console.warn('Memorial cache read failed:', e);
+      }
+    }
+
+    // Fetch from Sheets
+    const url  = `https://docs.google.com/spreadsheets/d/${MEMORIAL_SHEET_ID}/gviz/tq?tqx=out:json`;
     const text = await fetch(url).then(r => r.text());
     const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
     const rows = json.table.rows;
@@ -753,6 +898,10 @@ async function loadMemorialData() {
         link:    c[10],
       });
     });
+
+    // Save to cache
+    try { await saveToCache('memorials', memorialData); } catch(e) { console.warn('Memorial cache write failed:', e); }
+
   } catch(e) {
     console.warn('Could not load memorial data:', e);
   }
@@ -801,111 +950,4 @@ function showMemorial(plotNo, surname, forename) {
       ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
           <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
       ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
-          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
-    </table>
-
-  `;
-}
-
-function closeMemorial() {
-  const panel   = document.getElementById('memorial-panel');
-  const overlay = document.getElementById('memorial-overlay');
-  panel.style.transform = 'translateX(100%)';
-  setTimeout(() => {
-    panel.style.display   = 'none';
-    overlay.style.display = 'none';
-  }, 300);
-}
-
-// Close panel on Escape key
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
-// ──────────────────────────────────────────────────────────────
-
-// ── Year range slider ─────────────────────────────────────────
-function updateYearSliderUI(minYear, maxYear, from, to) {
-  const pct = v => ((v - minYear) / (maxYear - minYear)) * 100;
-  const fill  = document.getElementById('year-fill');
-  const label = document.getElementById('year-range-label');
-  fill.style.left  = pct(from) + '%';
-  fill.style.width = (pct(to) - pct(from)) + '%';
-  label.textContent = (from === minYear && to === maxYear)
-    ? 'All years'
-    : `${from} – ${to}`;
-}
-
-function onYearSlider() {
-  const fromEl = document.getElementById('year-from');
-  const toEl   = document.getElementById('year-to');
-  let from = +fromEl.value;
-  let to   = +toEl.value;
-  // Stop handles crossing
-  if (from > to) { from = to; fromEl.value = from; }
-  updateYearSliderUI(+fromEl.min, +toEl.max, from, to);
-  applyFilters();
-}
-// ──────────────────────────────────────────────────────────────
-
-// ── Share filtered view ───────────────────────────────────────
-function shareFilters() {
-  const params = new URLSearchParams();
-  const search   = document.getElementById('search').value;
-  const gender   = document.getElementById('filter-gender').value;
-  const decade   = document.getElementById('filter-decade').value;
-  const mem      = document.getElementById('filter-memorial').value;
-  const residence= document.getElementById('filter-residence').value;
-  const fromEl   = document.getElementById('year-from');
-  const toEl     = document.getElementById('year-to');
-  const yearFrom = +fromEl.value;
-  const yearTo   = +toEl.value;
-
-  if (search)    params.set('search', search);
-  if (gender)    params.set('gender', gender);
-  if (decade)    params.set('decade', decade);
-  if (mem)       params.set('mem', mem);
-  if (residence) params.set('residence', residence);
-  if (yearFrom > +fromEl.min) params.set('from', yearFrom);
-  if (yearTo   < +toEl.max)   params.set('to',   yearTo);
-
-  const url = window.location.origin + window.location.pathname +
-    (params.toString() ? '?' + params.toString() : '');
-
-  navigator.clipboard.writeText(url).then(() => {
-    const btn = document.getElementById('share-btn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Copied!';
-    btn.style.background = '#2A5C2A';
-    setTimeout(() => {
-      btn.textContent = orig;
-      btn.style.background = '#2C2A26';
-    }, 2000);
-  }).catch(() => {
-    // Fallback: prompt with the URL if clipboard fails
-    prompt('Copy this link:', url);
-  });
-}
-
-function readFiltersFromURL() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('search'))    document.getElementById('search').value = params.get('search');
-  if (params.has('gender'))    document.getElementById('filter-gender').value = params.get('gender');
-  if (params.has('decade'))    document.getElementById('filter-decade').value = params.get('decade');
-  if (params.has('mem'))       document.getElementById('filter-memorial').value = params.get('mem');
-  if (params.has('residence')) document.getElementById('filter-residence').value = params.get('residence');
-  // Year range — applied after sliders are initialised in loadData()
-  if (params.has('from') || params.has('to')) {
-    window._urlYearFrom = params.has('from') ? +params.get('from') : null;
-    window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
-  }
-}
-// ──────────────────────────────────────────────────────────────
-
-// Auto-load on page open
-window.addEventListener('load', () => {
-  readFiltersFromURL();
-  loadData();
-  loadMemorialData();
-});
-</script>
-
-</body>
-</html>
+          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` 
