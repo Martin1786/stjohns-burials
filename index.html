@@ -238,6 +238,66 @@
   .badge-decade { background: #E8EFF8; color: #2A4A7A; }
   .badge-gender-m { background: #E8F0F8; color: #1A4A7A; }
   .badge-gender-f { background: #F8EAF0; color: #7A1A4A; }
+  .badge-events { background: #E8E0F0; color: #4A2A7A; cursor: pointer; }
+  .badge-events:hover { background: #d4c8e8; }
+
+  /* Events panel */
+  .event-item {
+    background: white;
+    border: 1px solid #D5CFC4;
+    border-radius: 4px;
+    border-left: 3px solid #6A3A9A;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.6rem;
+  }
+  .event-meta {
+    font-size: 0.75rem;
+    color: #7A7268;
+    margin-bottom: 0.3rem;
+    display: flex;
+    gap: 0.5rem 1rem;
+    flex-wrap: wrap;
+  }
+  .event-category {
+    font-size: 0.68rem;
+    background: #E8E0F0;
+    color: #4A2A7A;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .event-notes {
+    font-size: 0.82rem;
+    color: #2C2A26;
+    line-height: 1.5;
+    margin-top: 0.3rem;
+  }
+  .event-notes.truncated {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .event-expand {
+    background: none;
+    border: none;
+    color: #6A3A9A;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    margin-top: 0.2rem;
+    display: block;
+  }
+  .events-caveat {
+    font-size: 0.75rem;
+    color: #9A9188;
+    font-style: italic;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+    padding: 0.6rem 0.75rem;
+    background: #F0EDEA;
+    border-radius: 4px;
+  }
   .card-notes {
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 0.78rem;
@@ -449,6 +509,18 @@
   </div>
 </div>
 
+<!-- Events slide-in panel -->
+<div id="events-overlay" onclick="closeEvents()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;"></div>
+<div id="events-panel" style="display:none;position:fixed;top:0;right:0;height:100%;width:380px;max-width:95vw;background:#F5F2ED;z-index:201;box-shadow:-4px 0 20px rgba(0,0,0,0.2);overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="background:#2C2A26;color:#F5F2ED;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #6A3A9A;">
+    <span style="font-family:Georgia,serif;font-size:1rem;letter-spacing:0.03em;">📰 Parish Records</span>
+    <button onclick="closeEvents()" style="background:none;border:none;color:#F5F2ED;font-size:1.4rem;cursor:pointer;line-height:1;padding:0;">×</button>
+  </div>
+  <div id="events-content" style="padding:1.25rem;">
+    <div style="text-align:center;padding:2rem;color:#9A9188;">Loading…</div>
+  </div>
+</div>
+
 <script>
 const SHEET_ID = '1RDaAcpxauOaK7v3ezPlKnGy0Kio_sSZTiDb9vNaJD8w';
 const TABS = [
@@ -463,6 +535,11 @@ const MEMORIAL_SHEET_ID = '1WsZHOjtS3w_JLOJSj-ynm1MrfB6t5JNQb0Qw0P6M9OU';
 let memorialData = [];   // array of all memorial records
 // ──────────────────────────────────────────────────────────────
 
+// ── Events sheet ─────────────────────────────────────────────
+const EVENTS_SHEET_ID = '1Mcm0Mls25vypw4d0KyqmFpdumoKmEIQmf2cJtsQLFhE';
+let eventsData = [];     // array of all parish event records
+const EVENTS_YEAR_RANGE = 10;  // ±years for fuzzy surname+year match
+// ──────────────────────────────────────────────────────────────
 // ── Display switches ──────────────────────────────────────────
 const SHOW_NOTES = true;   // set to false to hide the notes section on cards
 // ──────────────────────────────────────────────────────────────
@@ -534,7 +611,9 @@ async function forceRefresh() {
   if (btn) { btn.textContent = '↻ Refreshing…'; btn.disabled = true; }
   allRecords   = [];
   memorialData = [];
-  await Promise.all([ loadData(true), loadMemorialData(true) ]);
+  eventsData   = [];
+  await Promise.all([ loadData(true), loadMemorialData(true), loadEventsData(true) ]);
+  applyFilters(); // re-render cards so events badges update
   if (btn) { btn.textContent = '↻ Refresh data'; btn.disabled = false; }
 }
 // ──────────────────────────────────────────────────────────────
@@ -805,7 +884,7 @@ function renderCards() {
         ${r.age  ? `<span>Age ${escHtml(r.age)}</span>` : ''}
       </div>
       ${r.residence ? `<div class="card-residence">${escHtml(r.residence)}</div>` : ''}
-      <div class="card-badges">${memBadge}${genderBadge}${decadeBadge}</div>
+      <div class="card-badges">${memBadge}${genderBadge}${decadeBadge}${eventsBadge(r)}</div>
       ${notesHtml}
       ${vicHtml}
     `;
@@ -827,6 +906,147 @@ function toggleNotes(id, btn) {
 function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Events panel ──────────────────────────────────────────────
+function parseEventYear(dateStr) {
+  // Expects DD/MM/YYYY
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length === 3) return parseInt(parts[2]);
+  return null;
+}
+
+function findEventMatches(r) {
+  const surname  = (r.surname || '').toUpperCase().trim();
+  const deathYear = parseInt(r.year) || null;
+  return eventsData.filter(ev => {
+    if (ev.surname !== surname) return false;
+    if (deathYear && ev.year) {
+      return Math.abs(ev.year - deathYear) <= EVENTS_YEAR_RANGE;
+    }
+    return true; // if no year data, match on surname alone
+  });
+}
+
+function eventsBadge(r) {
+  if (!eventsData.length) return '';
+  const matches = findEventMatches(r);
+  if (!matches.length) return '';
+  const surnameEsc   = r.surname.replace(/'/g, "\\'");
+  const forenameEsc  = r.forename.replace(/'/g, "\\'");
+  const yearVal      = r.year || '';
+  return `<span class="badge badge-events" onclick="showEvents('${surnameEsc}','${forenameEsc}','${yearVal}')">📰 ${matches.length} parish record${matches.length > 1 ? 's' : ''}</span>`;
+}
+
+function showEvents(surname, forename, year) {
+  const deathYear = parseInt(year) || null;
+  const matches   = eventsData.filter(ev => {
+    if (ev.surname !== surname.toUpperCase().trim()) return false;
+    if (deathYear && ev.year) return Math.abs(ev.year - deathYear) <= EVENTS_YEAR_RANGE;
+    return true;
+  });
+
+  const panel   = document.getElementById('events-panel');
+  const overlay = document.getElementById('events-overlay');
+  const content = document.getElementById('events-content');
+
+  let html = `<div class="events-caveat">Possible matches for <strong>${escHtml(forename)} ${escHtml(surname)}</strong> based on surname and date (±${EVENTS_YEAR_RANGE} years). These may not all refer to the same person.</div>`;
+
+  matches.forEach((ev, i) => {
+    const notesFull    = escHtml(ev.notes || '');
+    const notesShort   = ev.notes && ev.notes.length > 50 ? escHtml(ev.notes.slice(0, 50)) + '…' : notesFull;
+    const hasMore      = ev.notes && ev.notes.length > 50;
+    const notesId      = `evnote-${i}`;
+    html += `
+      <div class="event-item">
+        <div class="event-meta">
+          <span>📅 ${escHtml(ev.date || '')}</span>
+          <span>${escHtml(ev.newspaper || '')}</span>
+          ${ev.category ? `<span class="event-category">${escHtml(ev.category)}</span>` : ''}
+        </div>
+        <div class="event-notes truncated" id="${notesId}">${notesShort}</div>
+        ${hasMore ? `<button class="event-expand" onclick="expandEvent('${notesId}','${notesFull.replace(/'/g,"\\'")}',this)">Show full text ›</button>` : ''}
+      </div>`;
+  });
+
+  content.innerHTML = html;
+  panel.style.display   = 'block';
+  overlay.style.display = 'block';
+  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
+}
+
+function expandEvent(id, fullText, btn) {
+  const el = document.getElementById(id);
+  el.classList.remove('truncated');
+  el.innerHTML = fullText;
+  btn.remove();
+}
+
+function closeEvents() {
+  const panel   = document.getElementById('events-panel');
+  const overlay = document.getElementById('events-overlay');
+  panel.style.transform = 'translateX(100%)';
+  setTimeout(() => {
+    panel.style.display   = 'none';
+    overlay.style.display = 'none';
+  }, 300);
+}
+
+async function loadEventsData(forceRefresh = false) {
+  try {
+    if (!forceRefresh) {
+      try {
+        const cached = await loadFromCache('events');
+        if (cached && cached.data && cached.data.length) {
+          if (isFresh(cached.savedAt) || !navigator.onLine) {
+            eventsData = cached.data;
+            return;
+          }
+        }
+      } catch(e) {
+        console.warn('Events cache read failed:', e);
+      }
+    }
+
+    const url  = `https://docs.google.com/spreadsheets/d/${EVENTS_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Events%20by%20date`;
+    const text = await fetch(url).then(r => r.text());
+    const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+    // Headers: ID, Surname, Forename, Date, Newspaper, Notes, Image, Category, Submitted date, Submitted by
+    json.table.rows.forEach(row => {
+      if (!row) return;
+      const c = row.c.map(cell => {
+        if (!cell || cell.v === null || cell.v === undefined) return '';
+        if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
+        if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+          const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
+          return parts[2].toString().padStart(2,'0') + '/' + (parts[1]+1).toString().padStart(2,'0') + '/' + parts[0];
+        }
+        return String(cell.v).trim();
+      });
+      const surname = (c[1] || '').toUpperCase().trim();
+      if (!surname) return;
+      eventsData.push({
+        id:        c[0],
+        surname,
+        forename:  c[2],
+        date:      c[3],
+        year:      parseEventYear(c[3]),
+        newspaper: c[4],
+        notes:     c[5],
+        category:  c[7],
+      });
+    });
+
+    try { await saveToCache('events', eventsData); } catch(e) { console.warn('Events cache write failed:', e); }
+
+    // Re-render cards now events are loaded so badges appear
+    if (filteredRecords.length) renderCards();
+
+  } catch(e) {
+    console.warn('Could not load events data:', e);
+  }
+}
+// ──────────────────────────────────────────────────────────────
 
 function showLoading(msg) {
   document.getElementById('state-area').style.display = 'block';
@@ -859,203 +1079,4 @@ async function loadMemorialData(forceRefresh = false) {
         const cached = await loadFromCache('memorials');
         if (cached && cached.data && cached.data.length) {
           // Use cache if fresh, OR if we appear to be offline
-          if (isFresh(cached.savedAt) || !navigator.onLine) {
-            memorialData = cached.data;
-            return;
-          }
-        }
-      } catch(e) {
-        console.warn('Memorial cache read failed:', e);
-      }
-    }
-
-    // Fetch from Sheets (only reached if online and cache missing/stale)
-    const url  = `https://docs.google.com/spreadsheets/d/${MEMORIAL_SHEET_ID}/gviz/tq?tqx=out:json`;
-    const text = await fetch(url).then(r => r.text());
-    const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
-    const rows = json.table.rows;
-    // Columns: 0=ID, 1=Row, 2=Abbreviation, 3=Date of Death, 4=Surname, 5=Forename,
-    //          6=Burial/Notes, 7=Old Plot, 8=New Plot, 9=XY, 10=Link, 11=Section, 12=Notes ...
-    rows.forEach(row => {
-      if (!row) return;
-      const c = row.c.map(cell => {
-        if (!cell || cell.v === null || cell.v === undefined) return '';
-        if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
-        if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-          const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
-          return parts[2].toString().padStart(2,'0') + '/' + (parts[1]+1).toString().padStart(2,'0') + '/' + parts[0];
-        }
-        let s = String(cell.v).trim();
-        if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1,-1).trim();
-        return s;
-      });
-      const plotNo = c[8]; // New Plot
-      if (plotNo) memorialData.push({
-        plot:    plotNo,
-        death:   c[3],
-        surname: c[4].toUpperCase(),
-        forename:c[5].toUpperCase(),
-        burial:  c[6],
-        link:    c[10],
-      });
-    });
-
-    // Save to cache
-    try { await saveToCache('memorials', memorialData); } catch(e) { console.warn('Memorial cache write failed:', e); }
-
-  } catch(e) {
-    console.warn('Could not load memorial data:', e);
-  }
-}
-
-function driveThumb(url) {
-  // Convert Google Drive share/view link to a displayable thumbnail URL
-  if (!url) return '';
-  const m = url.match(/\/file\/d\/([^\/]+)/);
-  if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w600`;
-  return url; // return as-is if not a Drive link
-}
-
-function showMemorial(plotNo, surname, forename) {
-  const panel   = document.getElementById('memorial-panel');
-  const overlay = document.getElementById('memorial-overlay');
-  const content = document.getElementById('memorial-content');
-
-  overlay.style.display = 'block';
-  panel.style.display   = 'block';
-  // Trigger transition on next frame
-  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
-
-  // Match on plot + surname + forename; fall back to plot + surname, then plot alone
-  let m = memorialData.find(r => r.plot === plotNo && r.surname === surname && r.forename === forename);
-  if (!m) m = memorialData.find(r => r.plot === plotNo && r.surname === surname);
-  if (!m) m = memorialData.find(r => r.plot === plotNo);
-  if (!m) {
-    content.innerHTML = `<div style="text-align:center;padding:2rem;color:#9A9188;">
-      <div style="font-size:2rem;margin-bottom:0.5rem;">🪨</div>
-      <p>No memorial record found for Plot ${escHtml(plotNo)}.</p>
-    </div>`;
-    return;
-  }
-
-  const imgHtml = '';
-
-  content.innerHTML = `
-    ${imgHtml}
-    <div style="font-family:Georgia,serif;font-size:1.15rem;color:#1A1814;margin-bottom:0.75rem;">
-      ${escHtml(m.forename)} ${escHtml(m.surname)}
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-      <tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Plot</td>
-          <td style="color:#2C2A26;font-weight:500;">${escHtml(m.plot)}</td></tr>
-      ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
-          <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
-      ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
-          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
-    </table>
-
-  `;
-}
-
-function closeMemorial() {
-  const panel   = document.getElementById('memorial-panel');
-  const overlay = document.getElementById('memorial-overlay');
-  panel.style.transform = 'translateX(100%)';
-  setTimeout(() => {
-    panel.style.display   = 'none';
-    overlay.style.display = 'none';
-  }, 300);
-}
-
-// Close panel on Escape key
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
-// ──────────────────────────────────────────────────────────────
-
-// ── Year range slider ─────────────────────────────────────────
-function updateYearSliderUI(minYear, maxYear, from, to) {
-  const pct = v => ((v - minYear) / (maxYear - minYear)) * 100;
-  const fill  = document.getElementById('year-fill');
-  const label = document.getElementById('year-range-label');
-  fill.style.left  = pct(from) + '%';
-  fill.style.width = (pct(to) - pct(from)) + '%';
-  label.textContent = (from === minYear && to === maxYear)
-    ? 'All years'
-    : `${from} – ${to}`;
-}
-
-function onYearSlider() {
-  const fromEl = document.getElementById('year-from');
-  const toEl   = document.getElementById('year-to');
-  let from = +fromEl.value;
-  let to   = +toEl.value;
-  // Stop handles crossing
-  if (from > to) { from = to; fromEl.value = from; }
-  updateYearSliderUI(+fromEl.min, +toEl.max, from, to);
-  applyFilters();
-}
-// ──────────────────────────────────────────────────────────────
-
-// ── Share filtered view ───────────────────────────────────────
-function shareFilters() {
-  const params = new URLSearchParams();
-  const search   = document.getElementById('search').value;
-  const gender   = document.getElementById('filter-gender').value;
-  const decade   = document.getElementById('filter-decade').value;
-  const mem      = document.getElementById('filter-memorial').value;
-  const residence= document.getElementById('filter-residence').value;
-  const fromEl   = document.getElementById('year-from');
-  const toEl     = document.getElementById('year-to');
-  const yearFrom = +fromEl.value;
-  const yearTo   = +toEl.value;
-
-  if (search)    params.set('search', search);
-  if (gender)    params.set('gender', gender);
-  if (decade)    params.set('decade', decade);
-  if (mem)       params.set('mem', mem);
-  if (residence) params.set('residence', residence);
-  if (yearFrom > +fromEl.min) params.set('from', yearFrom);
-  if (yearTo   < +toEl.max)   params.set('to',   yearTo);
-
-  const url = window.location.origin + window.location.pathname +
-    (params.toString() ? '?' + params.toString() : '');
-
-  navigator.clipboard.writeText(url).then(() => {
-    const btn = document.getElementById('share-btn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Copied!';
-    btn.style.background = '#2A5C2A';
-    setTimeout(() => {
-      btn.textContent = orig;
-      btn.style.background = '#2C2A26';
-    }, 2000);
-  }).catch(() => {
-    // Fallback: prompt with the URL if clipboard fails
-    prompt('Copy this link:', url);
-  });
-}
-
-function readFiltersFromURL() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('search'))    document.getElementById('search').value = params.get('search');
-  if (params.has('gender'))    document.getElementById('filter-gender').value = params.get('gender');
-  if (params.has('decade'))    document.getElementById('filter-decade').value = params.get('decade');
-  if (params.has('mem'))       document.getElementById('filter-memorial').value = params.get('mem');
-  if (params.has('residence')) document.getElementById('filter-residence').value = params.get('residence');
-  // Year range — applied after sliders are initialised in loadData()
-  if (params.has('from') || params.has('to')) {
-    window._urlYearFrom = params.has('from') ? +params.get('from') : null;
-    window._urlYearTo   = params.has('to')   ? +params.get('to')   : null;
-  }
-}
-// ──────────────────────────────────────────────────────────────
-
-// Auto-load on page open
-window.addEventListener('load', () => {
-  readFiltersFromURL();
-  loadData();
-  loadMemorialData();
-});
-</script>
-
-</body>
-</html>
+          if (isFresh(c
