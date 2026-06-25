@@ -439,7 +439,7 @@
 
 <!-- Memorial slide-in panel -->
 <div id="memorial-overlay" onclick="closeMemorial()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;"></div>
-<div id="memorial-panel" style="display:none;position:fixed;top:0;right:0;height:100%;width:360px;max-width:95vw;background:#F5F2ED;z-index:201;box-shadow:-4px 0 20px rgba(0,0,0,0.2);overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;font-family:'Helvetica Neue',Arial,sans-serif;">
+<div id="memorial-panel" style="display:none;position:fixed;top:0;right:0;height:100%;width:420px;max-width:95vw;background:#F5F2ED;z-index:201;box-shadow:-4px 0 20px rgba(0,0,0,0.2);overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;font-family:'Helvetica Neue',Arial,sans-serif;">
   <div style="background:#2C2A26;color:#F5F2ED;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #8B6914;">
     <span style="font-family:Georgia,serif;font-size:1rem;letter-spacing:0.03em;">Memorial Record</span>
     <button onclick="closeMemorial()" style="background:none;border:none;color:#F5F2ED;font-size:1.4rem;cursor:pointer;line-height:1;padding:0;">×</button>
@@ -869,6 +869,7 @@ async function loadMemorialData(forceRefresh = false) {
       });
       const plotNo = c[8]; // New Plot
       if (plotNo) memorialData.push({
+        id:      c[0],
         plot:    plotNo,
         death:   c[3],
         surname: c[4].toUpperCase(),
@@ -916,19 +917,18 @@ function showMemorial(plotNo, surname, forename) {
   const imgHtml = '';
 
   content.innerHTML = `
-    ${imgHtml}
-    <div style="font-family:Georgia,serif;font-size:1.15rem;color:#1A1814;margin-bottom:0.75rem;">
+    <div style="font-family:Georgia,serif;font-size:1.05rem;color:#1A1814;margin-bottom:0.75rem;">
       ${escHtml(m.forename)} ${escHtml(m.surname)}
+      <span style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:0.78rem;color:#9A9188;margin-left:0.5rem;">Plot ${escHtml(m.plot)}</span>
     </div>
-    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-      <tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Plot</td>
-          <td style="color:#2C2A26;font-weight:500;">${escHtml(m.plot)}</td></tr>
-      ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
-          <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
-      ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
-          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
-    </table>
-
+    <iframe
+      src="https://www.appsheet.com/start/4f57caf0-2f09-4911-883a-d0e5cbf48bc8#view=Section%20B_Detail&row=${encodeURIComponent(m.id)}"
+      width="100%"
+      height="520px"
+      frameborder="0"
+      allow="geolocation *; camera *; microphone *"
+      style="border-radius:4px;border:1px solid #D5CFC4;">
+    </iframe>
   `;
 }
 
