@@ -468,18 +468,17 @@ const SHOW_NOTES = true;   // set to false to hide the notes section on cards
 // ──────────────────────────────────────────────────────────────
 
 // ── IndexedDB cache ───────────────────────────────────────────
-const DB_NAME     = 'StJohnsBurialsDB';
-const DB_VERSION  = 1;
-const CACHE_HOURS = 24;   // hours before treating cached data as stale
+const DB_NAME    = 'StJohnsBurialsDB';
+const DB_VERSION = 1;
+const CACHE_HOURS = 24;
 
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains('cache')) {
+      if (!db.objectStoreNames.contains('cache'))
         db.createObjectStore('cache', { keyPath: 'key' });
-      }
     };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror   = e => reject(e.target.error);
@@ -489,9 +488,8 @@ function openDB() {
 async function saveToCache(key, data) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx    = db.transaction('cache', 'readwrite');
-    const store = tx.objectStore('cache');
-    store.put({ key, data, savedAt: Date.now() });
+    const tx = db.transaction('cache', 'readwrite');
+    tx.objectStore('cache').put({ key, data, savedAt: Date.now() });
     tx.oncomplete = resolve;
     tx.onerror    = e => reject(e.target.error);
   });
@@ -500,9 +498,8 @@ async function saveToCache(key, data) {
 async function loadFromCache(key) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx    = db.transaction('cache', 'readonly');
-    const store = tx.objectStore('cache');
-    const req   = store.get(key);
+    const tx  = db.transaction('cache', 'readonly');
+    const req = tx.objectStore('cache').get(key);
     req.onsuccess = e => resolve(e.target.result || null);
     req.onerror   = e => reject(e.target.error);
   });
@@ -514,9 +511,8 @@ function isFresh(savedAt) {
 
 function formatSyncTime(ts) {
   const d = new Date(ts);
-  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return `${date} at ${time}`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    + ' at ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 function setSyncStatus(text) {
@@ -556,40 +552,11 @@ function memorialState(val) {
   return 'plot';
 }
 
-async function fetchBurialsFromSheets() {
-  const fetches = TABS.map(tab =>
-    fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`)
-      .then(r => r.text())
-      .then(text => {
-        const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
-        const cols = json.table.cols.map(c => c.label);
-        const rows = json.table.rows.map(row =>
-          row ? row.c.map(cell => {
-            if (!cell || cell.v === null || cell.v === undefined) return '';
-            if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
-            if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-              const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
-              const d = parts[2].toString().padStart(2,'0');
-              const m = (parts[1]+1).toString().padStart(2,'0');
-              const y = parts[0];
-              return d + '/' + m + '/' + y;
-            }
-            return String(cell.v).trim();
-          }) : []
-        );
-        return { tab: tab.label, data: { values: [cols, ...rows] } };
-      })
-  );
-  return Promise.all(fetches);
-}
-
 async function loadData(forceRefresh = false) {
-  showLoading('Checking local cache…');
-
+  showLoading();
   try {
     let results;
 
-    // Try cache first (unless forced refresh)
     if (!forceRefresh) {
       try {
         const cached = await loadFromCache('burials');
@@ -598,24 +565,40 @@ async function loadData(forceRefresh = false) {
           setSyncStatus(`Loaded from device · synced ${formatSyncTime(cached.savedAt)}`);
           showRefreshBtn(true);
         }
-      } catch(e) {
-        console.warn('Cache read failed, will fetch from Sheets:', e);
-      }
+      } catch(e) { console.warn('Burials cache read failed:', e); }
     }
 
-    // Fetch from Google Sheets if no usable cache
     if (!results) {
-      showLoading('Fetching from Google Sheets…');
       setSyncStatus('Fetching from Google Sheets…');
-      results = await fetchBurialsFromSheets();
-      // Save to cache in the background — don't let a cache failure block the app
+      const fetches = TABS.map(tab =>
+        fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`)
+          .then(r => r.text())
+          .then(text => {
+            const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+            const cols = json.table.cols.map(c => c.label);
+            const rows = json.table.rows.map(row =>
+              row ? row.c.map(cell => {
+                if (!cell || cell.v === null || cell.v === undefined) return '';
+                if (typeof cell.v === 'boolean') return (cell.f || String(cell.v)).trim();
+                if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+                  const parts = cell.v.replace('Date(','').replace(')','').split(',').map(Number);
+                  const d = parts[2].toString().padStart(2,'0');
+                  const m = (parts[1]+1).toString().padStart(2,'0');
+                  const y = parts[0];
+                  return d + '/' + m + '/' + y;
+                }
+                return String(cell.v).trim();
+              }) : []
+            );
+            return { tab: tab.label, data: { values: [cols, ...rows] } };
+          })
+      );
+      results = await Promise.all(fetches);
       saveToCache('burials', results)
         .then(() => setSyncStatus(`Synced from Google Sheets · ${formatSyncTime(Date.now())}`))
-        .catch(e => { console.warn('Cache write failed:', e); setSyncStatus('Loaded from Google Sheets'); });
+        .catch(e => { console.warn('Burials cache write failed:', e); setSyncStatus('Loaded from Google Sheets'); });
       showRefreshBtn(true);
     }
-
-    if (!results || !results.length) throw new Error('No data returned from source.');
 
     allRecords = [];
 
@@ -828,13 +811,13 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function showLoading(msg) {
+function showLoading() {
   document.getElementById('state-area').style.display = 'block';
   document.getElementById('state-area').innerHTML = `
     <div class="state-box">
       <div class="spinner"></div>
       <h3>Loading burial records…</h3>
-      <p>${msg || 'Please wait a moment.'}</p>
+      <p>Fetching all four registers from Google Sheets.</p>
     </div>`;
   document.getElementById('cards-grid').innerHTML = '';
 }
@@ -845,7 +828,7 @@ function showError(msg) {
     <div class="state-box">
       <div class="state-icon">⚠️</div>
       <h3>Could not load records</h3>
-      <p>There was a problem fetching the data. Check your connection and try again.<br><small style="color:#999">${escHtml(msg)}</small></p>
+      <p>Please check your API key and try again.<br><small style="color:#999">${escHtml(msg)}</small></p>
       <button class="retry-btn" onclick="location.reload()">Retry</button>
     </div>`;
 }
@@ -853,23 +836,18 @@ function showError(msg) {
 // ── Memorial panel ────────────────────────────────────────────
 async function loadMemorialData(forceRefresh = false) {
   try {
-    // Try cache first
     if (!forceRefresh) {
       try {
         const cached = await loadFromCache('memorials');
         if (cached && cached.data && cached.data.length) {
-          // Use cache if fresh, OR if we appear to be offline
           if (isFresh(cached.savedAt) || !navigator.onLine) {
             memorialData = cached.data;
             return;
           }
         }
-      } catch(e) {
-        console.warn('Memorial cache read failed:', e);
-      }
+      } catch(e) { console.warn('Memorial cache read failed:', e); }
     }
 
-    // Fetch from Sheets (only reached if online and cache missing/stale)
     const url  = `https://docs.google.com/spreadsheets/d/${MEMORIAL_SHEET_ID}/gviz/tq?tqx=out:json`;
     const text = await fetch(url).then(r => r.text());
     const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
@@ -899,10 +877,7 @@ async function loadMemorialData(forceRefresh = false) {
         link:    c[10],
       });
     });
-
-    // Save to cache
     try { await saveToCache('memorials', memorialData); } catch(e) { console.warn('Memorial cache write failed:', e); }
-
   } catch(e) {
     console.warn('Could not load memorial data:', e);
   }
