@@ -870,6 +870,7 @@ async function loadMemorialData(forceRefresh = false) {
       const plotNo = c[8]; // New Plot
       if (plotNo) memorialData.push({
         plot:    plotNo,
+		id:      c[0],        // ← add this
         death:   c[3],
         surname: c[4].toUpperCase(),
         forename:c[5].toUpperCase(),
@@ -892,55 +893,16 @@ function driveThumb(url) {
 }
 
 function showMemorial(plotNo, surname, forename) {
-  const panel   = document.getElementById('memorial-panel');
-  const overlay = document.getElementById('memorial-overlay');
-  const content = document.getElementById('memorial-content');
-
-  overlay.style.display = 'block';
-  panel.style.display   = 'block';
-  // Trigger transition on next frame
-  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
-
-  // Match on plot + surname + forename; fall back to plot + surname, then plot alone
   let m = memorialData.find(r => r.plot === plotNo && r.surname === surname && r.forename === forename);
   if (!m) m = memorialData.find(r => r.plot === plotNo && r.surname === surname);
   if (!m) m = memorialData.find(r => r.plot === plotNo);
-  if (!m) {
-    content.innerHTML = `<div style="text-align:center;padding:2rem;color:#9A9188;">
-      <div style="font-size:2rem;margin-bottom:0.5rem;">🪨</div>
-      <p>No memorial record found for Plot ${escHtml(plotNo)}.</p>
-    </div>`;
-    return;
-  }
+  if (!m) { alert(`No memorial record found for Plot ${plotNo}.`); return; }
 
-  const imgHtml = '';
-
-  content.innerHTML = `
-    ${imgHtml}
-    <div style="font-family:Georgia,serif;font-size:1.15rem;color:#1A1814;margin-bottom:0.75rem;">
-      ${escHtml(m.forename)} ${escHtml(m.surname)}
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-      <tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Plot</td>
-          <td style="color:#2C2A26;font-weight:500;">${escHtml(m.plot)}</td></tr>
-      ${m.death ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;">Date of death</td>
-          <td style="color:#2C2A26;">${escHtml(m.death)}</td></tr>` : ''}
-      ${m.burial ? `<tr><td style="color:#7A7268;padding:0.35rem 0.5rem 0.35rem 0;white-space:nowrap;vertical-align:top;">Notes</td>
-          <td style="color:#2C2A26;line-height:1.5;">${escHtml(m.burial)}</td></tr>` : ''}
-    </table>
-
-  `;
+  const url = `https://www.appsheet.com/start/4f57caf0-2f09-4911-883a-d0e5cbf48bc8#view=Section%20B_Detail&row=${m.id}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-function closeMemorial() {
-  const panel   = document.getElementById('memorial-panel');
-  const overlay = document.getElementById('memorial-overlay');
-  panel.style.transform = 'translateX(100%)';
-  setTimeout(() => {
-    panel.style.display   = 'none';
-    overlay.style.display = 'none';
-  }, 300);
-}
+
 
 // Close panel on Escape key
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemorial(); });
